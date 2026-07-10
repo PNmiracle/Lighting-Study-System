@@ -1,0 +1,217 @@
+// Prisma Schema for 留学机构学生与选导管理系统
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== 枚举 ====================
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum StudentStatus {
+  ACTIVE
+  GRADUATED
+  PAUSED
+}
+
+enum MatchLevel {
+  HIGH   // "建议多看看" — 绿色
+  MEDIUM // "可以备选" — 黄色
+}
+
+enum StudentIntent {
+  WANT_CONTACT // 想联系
+  BACKUP       // 备选
+  SKIP         // 跳过
+}
+
+// ==================== AI 模块枚举 ====================
+
+enum AiTaskStage {
+  NOT_STARTED     // 未开始
+  AI_PROCESSING   // AI 执行中
+  AI_SELF_CHECK   // AI 自检中（置信度评估）
+  HUMAN_REVIEW    // 人工待审批
+  COMPLETED       // 已完成
+  PAUSED          // 已暂停
+}
+
+enum AiTaskRound {
+  FIRST           // 初选
+  SECOND          // 第二轮
+  THIRD           // 第三轮
+}
+
+enum AiConfidence {
+  PASSED          // AI 自检通过
+  FAILED          // AI 自检未通过
+}
+
+enum AiTaskPriority {
+  P0              // 最高优先级
+  P1              // 普通优先级
+  P2              // 低优先级
+}
+
+// ==================== 模型 ====================
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  name         String
+  role         Role
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  teacher            Teacher?
+  student            Student?
+  createdSupervisors Supervisor[]
+
+  @@map("users")
+}
+
+model Teacher {
+  id          String   @id @default(uuid())
+  userId      String   @unique @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  maxStudents Int      @default(20) @map("max_students")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  students    Student[]
+  assignments SupervisorAssignment[]
+  aiTasks     AiSelectionTask[]
+
+  @@map("teachers")
+}
+
+model Student {
+  id                String        @id @default(uuid())
+  userId            String        @unique @map("user_id")
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedTeacherId String?       @map("assigned_teacher_id")
+  assignedTeacher   Teacher?      @relation(fields: [assignedTeacherId], references: [id])
+  grade             String?
+  targetCountry     String?       @map("target_country")
+  targetMajor       String?       @map("target_major")
+  status            StudentStatus @default(ACTIVE)
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  assignments SupervisorAssignment[]
+  aiTasks     AiSelectionTask[]
+
+  @@map("students")
+}
+
+model Supervisor {
+  id                String   @id @default(uuid())
+  name              String
+  title             String?
+  location          String?
+  university        String?
+  qsRanking         Int?     @map("qs_ranking")
+  usnewsRanking     Int?     @map("usnews_ranking")
+  department        String?
+  homepageUrl       String?  @map("homepage_url")
+  email             String?
+  phdApplicationUrl String?  @map("phd_application_url")
+  otherInfoUrl      String?  @map("other_info_url")
+  researchArea      String?  @map("research_area")
+  createdById       String   @map("created_by")
+  createdBy         User     @relation(fields: [createdById], references: [id])
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  assignments SupervisorAssignment[]
+
+  @@index([name])
+  @@index([university])
+  @@index([researchArea])
+  @@map("supervisors")
+}
+
+model SupervisorAssignment {
+  id            String         @id @default(uuid())
+  studentId     String         @map("student_id")
+  student       Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  supervisorId  String         @map("supervisor_id")
+  supervisor    Supervisor     @relation(fields: [supervisorId], references: [id])
+  teacherId     String         @map("teacher_id")
+  teacher       Teacher        @relation(fields: [teacherId], references: [id])
+  notes         String?
+  matchLevel    MatchLevel?    @map("match_level")
+  studentIntent StudentIntent? @map("student_intent")
+  intentLocked  Boolean        @default(false) @map("intent_locked")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  @@unique([studentId, supervisorId])
+  @@index([studentId])
+  @@index([teacherId])
+  @@index([supervisorId])
+  @@map("supervisor_assignments")
+}
+
+// ==================== AI 模块模型 ====================
+
+model AiSelectionTask {
+  id                  String          @id @default(uuid())
+  studentId           String          @map("student_id")
+  student             Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  teacherId           String          @map("teacher_id")
+  teacher             Teacher         @relation(fields: [teacherId], references: [id])
+  prompt              String          @db.Text
+  stage               AiTaskStage     @default(NOT_STARTED)
+  round               AiTaskRound     @default(FIRST)
+  priority            AiTaskPriority  @default(P1)
+  aiFeedback          String?         @map("ai_feedback") @db.Text
+  confidence          AiConfidence?
+  failureReason       String?         @map("failure_reason") @db.Text
+  errorCount          Int             @default(0) @map("error_count")
+  processingNode      String?         @map("processing_node")
+  lockedAt            DateTime?       @map("locked_at")
+  startedAt           DateTime?       @map("started_at")
+  endedAt             DateTime?       @map("ended_at")
+  resultSupervisorIds Json?           @map("result_supervisor_ids")
+  vikaRecordId        String?         @map("vika_record_id")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+
+  @@index([studentId])
+  @@index([teacherId])
+  @@index([stage])
+  @@index([round])
+  @@index([studentId, round])
+  @@map("ai_selection_tasks")
+}
+
+model PromptTemplate {
+  id        String   @id @default(uuid())
+  name      String
+  content   String   @db.Text
+  category  String?
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@index([createdBy])
+  @@map("prompt_templates")
+}

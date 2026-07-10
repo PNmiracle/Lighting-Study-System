@@ -1,0 +1,90 @@
+sequenceDiagram
+    participant T as 老师(浏览器)
+    participant K as AiTaskKanban
+    participant CD as CreateAiTaskDialog
+    participant API as Axios Client
+    participant BE as Express Server
+    participant AS as AiTaskService
+    participant AE as AiExecutionService
+    participant SKILL as PhdSupervisorSelector
+    participant DB as PostgreSQL
+    participant VS as VikaSyncAdapter(可选)
+
+    T->>K: 点击"新建 AI 选导任务"
+    K->>CD: 打开创建弹窗
+    CD->>CD: 加载学生下拉列表 + 提示词模板列表
+
+    T->>CD: 选择学生"蒋元萍"
+    CD->>CD: 自动填充学生信息占位符（姓名/方向/国家）
+    T->>CD: 选择提示词模板 或 手动编辑 prompt
+    T->>CD: 设置轮次=初选, 优先级=P1
+    T->>CD: 点击"创建并执行"
+
+    CD->>API: POST /api/ai-tasks { studentId, prompt, round, priority }
+    API->>BE: 请求（携带 JWT）
+    BE->>BE: authMiddleware + roleMiddleware(TEACHER)
+    BE->>AS: aiTaskService.create(data, teacherId)
+    AS->>DB: INSERT INTO ai_selection_tasks ... (stage=NOT_STARTED)
+    DB-->>AS: AiSelectionTask
+    AS->>VS: vikaSyncAdapter.syncTaskToVika(task) — 可选，异步
+    AS-->>BE: AiTaskDetail
+
+    BE-->>CD: { code: 0, data: AiTaskDetail }
+
+    CD->>API: POST /api/ai-tasks/:id/execute
+    API->>BE: 请求
+    BE->>AS: aiTaskService.execute(taskId)
+    AS->>DB: SELECT task WHERE id=? AND stage=NOT_STARTED
+    DB-->>AS: task
+    AS->>DB: UPDATE task SET stage=AI_PROCESSING, locked_at=NOW(), started_at=NOW()
+    AS->>AE: aiExecutionService.startExecution(taskId) — 异步启动
+    AS-->>BE: { taskId, status: 'queued' }
+    BE-->>CD: { code: 0, data: { taskId, status: 'queued' } }
+    CD-->>K: 关闭弹窗，看板刷新显示新卡片
+
+    Note over AE,SKILL: === 异步执行阶段（不阻塞 HTTP） ===
+
+    AE->>AE: 创建执行上下文，开始异步流程
+
+    AE->>DB: UPDATE task SET processing_node='searching', ai_feedback='正在进行导师搜索...'
+    AE->>SKILL: callPhdSupervisorSelector(prompt)
+    Note over SKILL: Skill 内部：解析 prompt → 搜索大学官网 → 提取导师信息 → 写备注 → 验证链接
+    SKILL-->>AE: { supervisors: [...], confidence: 'PASSED', ... }
+
+    AE->>DB: UPDATE task SET processing_node='upserting', ai_feedback='正在写入导师库...'
+
+    loop 对每个 AI 搜索到的导师
+        AE->>DB: SELECT FROM supervisors WHERE name ILIKE ? AND university ILIKE ?
+        alt 导师已存在
+            DB-->>AE: existing supervisor
+            AE->>AE: 使用已有 supervisor.id
+        else 导师不存在
+            AE->>DB: INSERT INTO supervisors ...
+            DB-->>AE: new supervisor
+        end
+    end
+
+    AE->>AE: 收集所有 supervisor IDs 组成 resultSupervisorIds
+
+    AE->>DB: UPDATE task SET processing_node='self_checking', ai_feedback='正在进行置信度评估...'
+    AE->>AE: 根据 skill 返回的 confidence 判断
+    alt confidence === PASSED
+        AE->>DB: UPDATE task SET stage=HUMAN_REVIEW, confidence=PASSED, locked_at=NULL, ai_feedback='...'
+    else confidence === FAILED
+        AE->>DB: UPDATE task SET stage=HUMAN_REVIEW, confidence=FAILED, locked_at=NULL, ai_feedback='...(包含失败原因)'
+    end
+
+    AE->>DB: UPDATE task SET result_supervisor_ids=?, processing_node='done', ended_at=NOW()
+
+    AE->>VS: vikaSyncAdapter.syncProgressToVika(task) — 可选
+
+    Note over K: === 前端轮询阶段 ===
+
+    loop 每 3 秒轮询（TanStack Query）
+        K->>API: GET /api/ai-tasks/:id
+        API-->>K: 最新 task 状态（processing_node + ai_feedback）
+        K->>K: 更新卡片上的进度指示器
+        alt stage === HUMAN_REVIEW
+            K->>K: 卡片显示"待审核"状态 + 通知老师
+        end
+    end

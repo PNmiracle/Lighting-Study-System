@@ -1,0 +1,172 @@
+%% 时序图 — 留学机构学生与选导管理系统
+%% 文件：sequence-diagram.mermaid
+%% 包含：登录认证流程、老师添加导师流程、学生标记意向流程
+
+%% ===== 1. 登录认证流程 =====
+sequenceDiagram
+    participant U as 用户浏览器
+    participant R as React Router
+    participant LP as LoginPage
+    participant API as Axios Client
+    participant BE as Express Server
+    participant AS as AuthService
+    participant DB as PostgreSQL
+
+    U->>R: 访问 /login
+    R->>LP: 渲染 LoginPage
+    U->>LP: 输入 email + password，点击登录
+    LP->>LP: Zod 校验表单格式
+    LP->>API: POST /api/auth/login { email, password }
+    API->>BE: 转发请求
+    BE->>BE: validation.ts 校验请求体
+    BE->>AS: auth.service.login(email, password)
+    AS->>DB: SELECT * FROM users WHERE email = ?
+    DB-->>AS: User record (含 password_hash)
+    AS->>AS: bcrypt.compare(password, password_hash)
+    alt 密码错误
+        AS-->>BE: throw AuthError(4001)
+        BE-->>API: { code: 4001, message: "邮箱或密码错误" }
+        API-->>LP: 错误响应
+        LP-->>U: 显示错误提示
+    else 密码正确
+        AS->>AS: 检查 status === ACTIVE
+        AS->>AS: jwt.sign({ userId, role, name }, SECRET, { expiresIn: '7d' })
+        AS-->>BE: { token, user: UserInfo }
+        BE-->>API: { code: 0, data: { token, user } }
+        API-->>LP: 成功响应
+        LP->>LP: authStore.login(token, user) → localStorage 持久化
+        LP->>R: navigate(role → /admin | /teacher | /student)
+        R-->>U: 渲染对应角色首页
+    end
+
+%% ===== 2. 老师添加导师到学生推荐列表流程 =====
+sequenceDiagram
+    participant T as 老师(浏览器)
+    participant TW as TeacherWorkspace
+    participant AS as AddSupervisorDialog
+    participant SP as SupervisorSearchPanel
+    participant API as Axios Client
+    participant BE as Express Server
+    participant SS as SupervisorService
+    participant APS as AssignmentService
+    participant DB as PostgreSQL
+
+    T->>TW: 点击选中某学生卡片
+    TW->>TW: 设置 selectedStudentId
+    TW->>API: GET /api/assignments?studentId=xxx
+    API->>BE: 请求（携带 JWT）
+    BE->>BE: authMiddleware 解析 JWT
+    BE->>BE: roleMiddleware 校验 role === TEACHER
+    BE->>APS: assignment.service.listByStudent(studentId, teacherId)
+    APS->>APS: 校验 student.assignedTeacherId === teacherId
+    APS->>DB: SELECT * FROM supervisor_assignments WHERE student_id=? AND teacher_id=?
+    DB-->>APS: Assignment[]
+    APS-->>BE: AssignmentDetail[]
+    BE-->>API: { code: 0, data }
+    API-->>TW: 渲染导师表格
+
+    T->>TW: 点击"添加导师"按钮
+    TW->>AS: 打开 AddSupervisorDialog
+
+    alt 从导师库选择已有导师
+        T->>SP: 输入关键词搜索
+        SP->>API: GET /api/supervisors?q=关键词
+        API->>BE: 转发请求
+        BE->>SS: supervisor.service.search(query)
+        SS->>DB: SELECT * FROM supervisors WHERE name ILIKE '%q%' OR university ILIKE '%q%'
+        DB-->>SS: Supervisor[]
+        SS-->>BE: Supervisor[]
+        BE-->>API: { code: 0, data }
+        API-->>SP: 显示搜索结果
+        T->>SP: 选中某导师
+    else 手动录入新导师
+        T->>AS: 填写导师信息表单
+        AS->>API: POST /api/supervisors { name, university, ... }
+        API->>BE: 转发请求
+        BE->>SS: supervisor.service.create(data)
+        SS->>DB: INSERT INTO supervisors ...
+        DB-->>SS: Supervisor (新建)
+        SS-->>BE: Supervisor
+        BE-->>API: { code: 0, data }
+        API-->>AS: setSelectedSupervisor(newSupervisor)
+    end
+
+    T->>AS: 填写备注 + 选择匹配度，点击确认
+    AS->>API: POST /api/assignments { studentId, supervisorId, notes, matchLevel }
+    API->>BE: 转发请求
+    BE->>BE: authMiddleware + roleMiddleware
+    BE->>APS: assignment.service.create(data, req.user)
+    APS->>APS: 校验 student.assignedTeacherId === teacherId
+    APS->>APS: 校验 @@unique 无重复
+    APS->>DB: INSERT INTO supervisor_assignments ...
+    DB-->>APS: Assignment (新建)
+    APS-->>BE: AssignmentDetail
+    BE-->>API: { code: 0, data }
+    API-->>AS: 成功响应
+    AS-->>TW: 关闭弹窗 + invalidate assignments query
+    TW->>API: 自动重新 GET /api/assignments
+    API-->>TW: 刷新表格数据
+    TW-->>T: 表格显示新添加的导师行
+
+%% ===== 3. 学生标记意向流程 =====
+sequenceDiagram
+    participant S as 学生(浏览器)
+    participant SBP as StudentBrowsePage
+    participant SC as SupervisorCard
+    participant IB as IntentButtons
+    participant API as Axios Client
+    participant BE as Express Server
+    participant APS as AssignmentService
+    participant DB as PostgreSQL
+
+    S->>SBP: 访问 /student
+    SBP->>API: GET /api/assignments (studentId = own)
+    API->>BE: 请求（携带 JWT）
+    BE->>BE: authMiddleware → req.user = { userId, role: STUDENT }
+    BE->>BE: roleMiddleware 校验
+    BE->>APS: assignment.service.listByStudent(studentId)
+    APS->>DB: SELECT * FROM supervisor_assignments WHERE student_id=?
+    DB-->>APS: Assignment[]
+    APS-->>BE: AssignmentDetail[]
+    BE-->>API: { code: 0, data }
+    API-->>SBP: 渲染卡片网格 + 进度统计栏
+
+    S->>SC: 查看某导师卡片
+    SC->>IB: 渲染三态按钮（检查 intentLocked）
+
+    alt intentLocked === true
+        IB->>IB: 高亮当前意向按钮，禁用其他按钮
+        IB-->>S: 显示"已锁定"状态
+    else intentLocked === false
+        IB-->>S: 三个按钮可点击
+        S->>IB: 点击"想联系"
+        IB->>IB: 乐观更新 UI
+        IB->>API: PATCH /api/assignments/:id/intent { intent: 'WANT_CONTACT' }
+        API->>BE: 转发请求
+        BE->>BE: authMiddleware + roleMiddleware
+        BE->>APS: assignment.service.markIntent(id, 'WANT_CONTACT', req.user)
+        APS->>DB: SELECT * FROM supervisor_assignments WHERE id=?
+        DB-->>APS: Assignment
+        APS->>APS: 校验 assignment.studentId === student.id
+        APS->>APS: 检查 intentLocked === false
+        alt intentLocked === true
+            APS-->>BE: throw ConflictError(4008)
+            BE-->>API: { code: 4008, message: "意向已锁定" }
+            API-->>IB: 错误响应
+            IB->>IB: 回滚乐观更新
+            IB-->>S: 显示"该导师意向已锁定"
+        else intentLocked === false
+            APS->>APS: 更新 studentIntent + intentLocked = true
+            APS->>DB: UPDATE supervisor_assignments SET ...
+            DB-->>APS: 更新成功
+            APS-->>BE: AssignmentDetail
+            BE-->>API: { code: 0, data }
+            API-->>IB: 成功响应
+            IB->>IB: 确认乐观更新，锁定按钮
+            IB-->>S: 显示"已标记为想联系"
+        end
+    end
+
+    Note over SBP: TanStack Query invalidate → 重新获取
+    SBP->>API: 自动 GET /api/assignments (refetch)
+    API->>>SBP: 更新进度统计栏 (想联系 +1)

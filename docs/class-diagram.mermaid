@@ -1,0 +1,103 @@
+%% 类关系图 — 留学机构学生与选导管理系统
+%% 文件：class-diagram.mermaid
+
+classDiagram
+    class User {
+        +String id
+        +String email
+        +String passwordHash
+        +String name
+        +Role role
+        +UserStatus status
+        +DateTime createdAt
+        +DateTime updatedAt
+    }
+
+    class Teacher {
+        +String id
+        +String userId
+        +Int maxStudents
+        +DateTime createdAt
+        +DateTime updatedAt
+    }
+
+    class Student {
+        +String id
+        +String userId
+        +String? assignedTeacherId
+        +String? grade
+        +String? targetCountry
+        +String? targetMajor
+        +StudentStatus status
+        +DateTime createdAt
+        +DateTime updatedAt
+    }
+
+    class Supervisor {
+        +String id
+        +String name
+        +String? title
+        +String? location
+        +String? university
+        +Int? qsRanking
+        +Int? usnewsRanking
+        +String? department
+        +String? homepageUrl
+        +String? email
+        +String? phdApplicationUrl
+        +String? otherInfoUrl
+        +String? researchArea
+        +String createdById
+        +DateTime createdAt
+        +DateTime updatedAt
+    }
+
+    class SupervisorAssignment {
+        +String id
+        +String studentId
+        +String supervisorId
+        +String teacherId
+        +String? notes
+        +MatchLevel? matchLevel
+        +StudentIntent? studentIntent
+        +Boolean intentLocked
+        +DateTime createdAt
+        +DateTime updatedAt
+    }
+
+    class AuthService {
+        +login(email, password) AuthResult
+        +verifyToken(token) JwtPayload
+        +hashPassword(password) String
+    }
+
+    class AssignmentService {
+        +listByStudent(studentId) Assignment[]
+        +listByTeacher(teacherId) Assignment[]
+        +create(data) Assignment
+        +update(id, data) Assignment
+        +delete(id) void
+        +markIntent(id, intent) Assignment
+        +unlock(id) Assignment
+    }
+
+    class SupervisorService {
+        +search(query, filters) Supervisor[]
+        +getById(id) Supervisor
+        +create(data) Supervisor
+        +update(id, data) Supervisor
+        +delete(id) void
+    }
+
+    User "1" --> "0..1" Teacher : has
+    User "1" --> "0..1" Student : has
+    User "1" --> "0..*" Supervisor : creates
+    Teacher "1" --> "0..*" Student : assigned to
+    Teacher "1" --> "0..*" SupervisorAssignment : creates
+    Student "1" --> "0..*" SupervisorAssignment : receives
+    Supervisor "1" --> "0..*" SupervisorAssignment : appears in
+    AuthService --> User : authenticates
+    AssignmentService --> SupervisorAssignment : manages
+    AssignmentService --> Student : validates ownership
+    AssignmentService --> Teacher : validates ownership
+    SupervisorService --> Supervisor : manages
