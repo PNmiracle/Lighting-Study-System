@@ -8,3 +8,10 @@ CREATE TABLE IF NOT EXISTS files (
   uploaded_by TEXT NOT NULL,
   uploaded_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS case_states (
+  case_id TEXT PRIMARY KEY,
+  state_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  updated_by TEXT NOT NULL
+);
