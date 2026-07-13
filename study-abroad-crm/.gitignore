@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+.env.local
+storage/
+.next/
+.wrangler/
+__pycache__/

@@ -1,0 +1,13 @@
+@media (max-width: 760px) {
+  .portal-switch {
+    display: flex;
+    font-size: 0;
+    width: 30px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .portal-switch svg {
+    margin: 0;
+  }
+}

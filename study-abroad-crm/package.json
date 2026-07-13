@@ -1,0 +1,30 @@
+{
+  "name": "study-abroad-crm-demo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:site": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev",
+    "dev:vika": "printf '%s' \"$VIKA_TOKEN\" | node scripts/dev-vika.mjs",
+    "dev:connected": "zsh scripts/dev-connected.sh",
+    "build": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
+    "build:static": "vite build",
+    "preview": "vite preview",
+    "start:site": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "lucide-react": "latest",
+    "next": "^16.2.10",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-server-dom-webpack": "^19.2.7",
+    "vinext": "^1.0.0-beta.1",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.44.0",
+    "@vitejs/plugin-rsc": "^0.5.27"
+  }
+}
