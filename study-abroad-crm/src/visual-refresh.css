@@ -592,6 +592,96 @@ body { background: #f6f6ef; }
   .student-actions.four button { min-height: 36px; font-size: 10px; }
 }
 
+/* Application board spacing: keep column headers and cards visually distinct. */
+.main-content {
+  overflow: auto;
+  padding: 28px 20px 26px;
+  scrollbar-gutter: stable;
+}
+.main-content > .page-head {
+  flex: none;
+  padding-bottom: 23px;
+}
+.metrics {
+  flex: none;
+  min-height: 92px;
+}
+.metrics > div {
+  padding: 17px 20px;
+}
+.pipeline {
+  flex: 1 1 auto;
+  min-height: 360px;
+  margin-top: 4px;
+  padding: 8px 0 16px;
+}
+.stage {
+  padding: 16px 12px 20px;
+}
+.stage-head {
+  height: auto;
+  min-height: 40px;
+  padding: 0 4px 12px;
+  line-height: 1.35;
+}
+.stage-head strong {
+  line-height: 1.35;
+}
+.stage-list {
+  gap: 12px;
+  padding-top: 10px;
+}
+.application-card {
+  min-height: 112px;
+  padding: 14px 14px 13px;
+}
+.card-head {
+  min-height: 24px;
+  line-height: 1.35;
+}
+.application-card p {
+  margin: 10px 0 9px;
+  line-height: 1.5;
+}
+.card-foot {
+  min-height: 19px;
+  align-items: center;
+  line-height: 1.4;
+}
+.card-actions {
+  inset: auto 8px 8px auto;
+}
+.add-link {
+  margin-top: 4px;
+  padding-top: 12px;
+}
+.detail-panel {
+  min-height: 230px;
+  margin-top: 18px;
+}
+
+@media (max-width: 1100px) {
+  .main-content { padding: 22px 16px 24px; }
+  .pipeline { min-height: 340px; }
+}
+
+@media (max-width: 760px) {
+  .main-content { padding: 18px 12px 24px; }
+  .main-content > .page-head { padding-bottom: 18px; }
+  .main-content > .page-head h1 { font-size: 20px; white-space: nowrap; }
+  .metrics { min-height: 0; }
+  .metrics > div { padding: 14px 12px; }
+  .pipeline {
+    min-height: 430px;
+    margin-top: 3px;
+    padding-top: 2px;
+  }
+  .stage { padding: 15px 12px 18px; }
+  .stage-head { min-height: 42px; padding-bottom: 13px; }
+  .application-card { min-height: 116px; padding: 14px 13px; }
+  .detail-panel { margin-top: 16px; }
+}
+
 /* Role-aware demo login */
 .login-shell { min-height: 100vh; display: grid; grid-template-columns: minmax(360px, .9fr) minmax(460px, 1.1fr); background: #f7f6ee; color: var(--ink); }
 .login-story { position: relative; display: flex; flex-direction: column; justify-content: center; padding: 56px clamp(32px, 7vw, 120px); overflow: hidden; background: #332620; color: #fff7df; }
