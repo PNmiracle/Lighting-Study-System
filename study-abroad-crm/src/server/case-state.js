@@ -7,6 +7,8 @@ const EMPTY_STATE = {
   notes: {},
   feedback: {},
   feedbackNotes: {},
+  interviewNotes: {},
+  outreachStages: {},
   studentNote: '',
   selectedMentorIds: [1, 2],
   sent: false,
@@ -15,6 +17,8 @@ const EMPTY_STATE = {
 };
 
 let schemaReady;
+let localMutation = Promise.resolve();
+const OUTREACH_STAGES = new Set(['draft', 'sent', 'replied', 'interview']);
 
 async function database() {
   const env = await bindings();
@@ -42,13 +46,28 @@ function mergeState(current = {}, patch = {}, actor = '未标注') {
     ...current,
     notes: { ...(current.notes || {}) },
     feedback: { ...(current.feedback || {}) },
-    feedbackNotes: { ...(current.feedbackNotes || {}) }
+    feedbackNotes: { ...(current.feedbackNotes || {}) },
+    interviewNotes: { ...(current.interviewNotes || {}) },
+    outreachStages: { ...(current.outreachStages || {}) }
   };
 
-  if (patch.notes && typeof patch.notes === 'object') next.notes = { ...next.notes, ...patch.notes };
-  if (patch.feedback && typeof patch.feedback === 'object') next.feedback = { ...next.feedback, ...patch.feedback };
+  if (patch.notes && typeof patch.notes === 'object') {
+    next.notes = Object.fromEntries(Object.entries({ ...next.notes, ...patch.notes }).map(([mentorId, value]) => [String(mentorId).slice(0, 120), String(value || '').slice(0, 4000)]));
+  }
+  if (patch.feedback && typeof patch.feedback === 'object') {
+    next.feedback = Object.fromEntries(Object.entries({ ...next.feedback, ...patch.feedback }).map(([mentorId, value]) => [String(mentorId).slice(0, 120), String(value || '').slice(0, 40)]));
+  }
   if (patch.feedbackNotes && typeof patch.feedbackNotes === 'object') {
     next.feedbackNotes = Object.fromEntries(Object.entries({ ...next.feedbackNotes, ...patch.feedbackNotes }).map(([mentorId, value]) => [mentorId, String(value || '').slice(0, 4000)]));
+  }
+  if (patch.interviewNotes && typeof patch.interviewNotes === 'object') {
+    next.interviewNotes = Object.fromEntries(Object.entries({ ...next.interviewNotes, ...patch.interviewNotes }).map(([key, value]) => [key, String(value || '').slice(0, 4000)]));
+  }
+  if (patch.outreachStages && typeof patch.outreachStages === 'object') {
+    next.outreachStages = Object.fromEntries(Object.entries({ ...next.outreachStages, ...patch.outreachStages }).map(([mentorId, value]) => {
+      const stage = String(value || 'draft');
+      return [String(mentorId).slice(0, 120), OUTREACH_STAGES.has(stage) ? stage : 'draft'];
+    }));
   }
   if (typeof patch.studentNote === 'string') next.studentNote = patch.studentNote.slice(0, 4000);
   if (Array.isArray(patch.selectedMentorIds)) next.selectedMentorIds = patch.selectedMentorIds.filter(Number.isFinite).slice(0, 50);
@@ -74,6 +93,12 @@ async function writeLocalStore(store) {
   await fs.rename(temporary, LOCAL_STORE);
 }
 
+function mutateLocal(operation) {
+  const run = localMutation.then(operation, operation);
+  localMutation = run.then(() => undefined, () => undefined);
+  return run;
+}
+
 export async function getCaseState(caseId) {
   const db = await database();
   if (db) {
@@ -82,17 +107,18 @@ export async function getCaseState(caseId) {
     return { ...EMPTY_STATE, ...(row ? JSON.parse(row.state_json) : {}) };
   }
 
+  await localMutation;
   const store = await readLocalStore();
   return { ...EMPTY_STATE, ...(store[caseId] || {}) };
 }
 
 export async function updateCaseState(caseId, patch, actor) {
-  const current = await getCaseState(caseId);
-  const next = mergeState(current, patch, actor);
   const db = await database();
 
   if (db) {
     await ensureSchema(db);
+    const current = await getCaseState(caseId);
+    const next = mergeState(current, patch, actor);
     await db.prepare(`
       INSERT INTO case_states (case_id, state_json, updated_at, updated_by)
       VALUES (?, ?, ?, ?)
@@ -104,8 +130,11 @@ export async function updateCaseState(caseId, patch, actor) {
     return next;
   }
 
-  const store = await readLocalStore();
-  store[caseId] = next;
-  await writeLocalStore(store);
-  return next;
+  return mutateLocal(async () => {
+    const store = await readLocalStore();
+    const next = mergeState({ ...EMPTY_STATE, ...(store[caseId] || {}) }, patch, actor);
+    store[caseId] = next;
+    await writeLocalStore(store);
+    return next;
+  });
 }

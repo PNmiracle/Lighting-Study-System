@@ -13,3 +13,8 @@ export function envValue(name, fallback = '') {
   const value = globalThis.process?.env?.[name];
   return value || fallback;
 }
+
+export async function runtimeValue(name, fallback = '') {
+  const env = await bindings();
+  return env?.[name] || envValue(name, fallback);
+}

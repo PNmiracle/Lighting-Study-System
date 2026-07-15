@@ -1,7 +1,7 @@
 import { getCaseState, updateCaseState } from '../../../src/server/case-state.js';
 
 export async function GET(request) {
-  const caseId = new URL(request.url).searchParams.get('caseId');
+  const caseId = new URL(request.url).searchParams.get('caseId')?.trim().slice(0, 120);
   if (!caseId) return Response.json({ error: '缺少 caseId' }, { status: 400 });
 
   try {
@@ -16,7 +16,7 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const caseId = String(body.caseId || '').trim();
+    const caseId = String(body.caseId || '').trim().slice(0, 120);
     if (!caseId) return Response.json({ error: '缺少 caseId' }, { status: 400 });
     const state = await updateCaseState(caseId, body.patch || {}, body.actor || '未标注');
     return Response.json({ caseId, state }, {

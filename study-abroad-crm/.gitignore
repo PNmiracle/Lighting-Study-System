@@ -4,5 +4,6 @@ dist/
 .env.local
 storage/
 .next/
+.vinext/
 .wrangler/
 __pycache__/
