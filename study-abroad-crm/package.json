@@ -10,6 +10,7 @@
     "dev:connected": "zsh scripts/dev-connected.sh",
     "build": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
     "build:static": "vite build",
+    "build:pages": "node scripts/export-pages-data.mjs && vite build --config vite.pages.config.js --mode pages",
     "deploy": "node scripts/verify-deploy-config.mjs && npm run build && wrangler deploy",
     "deploy:dry": "npm run build && wrangler deploy --dry-run",
     "test:api": "node scripts/smoke-api.mjs",
