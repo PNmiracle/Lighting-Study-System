@@ -1,0 +1,106 @@
+classDiagram
+    class AiSelectionTask {
+        +String id
+        +String studentId
+        +String teacherId
+        +String prompt
+        +AiTaskStage stage
+        +AiTaskRound round
+        +AiTaskPriority priority
+        +String? aiFeedback
+        +AiConfidence? confidence
+        +String? failureReason
+        +Int errorCount
+        +String? processingNode
+        +DateTime? lockedAt
+        +DateTime? startedAt
+        +DateTime? endedAt
+        +Json? resultSupervisorIds
+        +String? vikaRecordId
+        +DateTime createdAt
+        +DateTime updatedAt
+    }
+
+    class PromptTemplate {
+        +String id
+        +String name
+        +String content
+        +String? category
+        +String createdBy
+        +DateTime createdAt
+        +DateTime updatedAt
+    }
+
+    class AiTaskService {
+        +create(data) AiSelectionTask
+        +list(filters) AiSelectionTask[]
+        +getById(id) AiSelectionTaskDetail
+        +update(id, data) AiSelectionTask
+        +execute(id) ExecutionResult
+        +review(id, action) AiSelectionTask
+        +delete(id) void
+        +completeTask(taskId) void
+    }
+
+    class AiExecutionService {
+        +startExecution(taskId) Promise~void~
+        +getProgress(taskId) ExecutionProgress
+        +cancelExecution(taskId) void
+        +handleTimeout(taskId) void
+        -callSkill(prompt) SkillResult
+        -upsertSupervisors(results) String[]
+        -createAssignments(taskId, supervisorIds) void
+        -updateProgress(taskId, node, message) void
+    }
+
+    class VikaSyncAdapter {
+        +syncTaskFromVika(vikaRecordId) AiSelectionTask
+        +syncResultToVika(taskId) void
+        +batchSyncPending() void
+        -readVikaBoard(filter) VikaRecord[]
+        -writeVikaBoard(recordId, data) void
+    }
+
+    class PromptTemplateService {
+        +list(category?) PromptTemplate[]
+        +create(data) PromptTemplate
+        +update(id, data) PromptTemplate
+        +delete(id) void
+        +resolveTemplate(templateId, student) String
+    }
+
+    class Student {
+        +String id
+        +String? targetCountry
+        +String? targetMajor
+        +aiTasks AiSelectionTask[]
+    }
+
+    class Teacher {
+        +String id
+        +aiTasks AiSelectionTask[]
+    }
+
+    class Supervisor {
+        +String id
+        +String name
+        +String? university
+    }
+
+    class SupervisorAssignment {
+        +String id
+        +String studentId
+        +String supervisorId
+        +String teacherId
+    }
+
+    Student "1" --> "0..*" AiSelectionTask : has
+    Teacher "1" --> "0..*" AiSelectionTask : creates
+    AiTaskService --> AiSelectionTask : manages
+    AiTaskService --> AiExecutionService : delegates
+    AiTaskService --> SupervisorAssignment : creates on complete
+    AiExecutionService --> Supervisor : upserts
+    AiExecutionService --> SupervisorAssignment : creates
+    AiExecutionService --> VikaSyncAdapter : optionally syncs
+    VikaSyncAdapter --> AiSelectionTask : reads/writes
+    PromptTemplateService --> PromptTemplate : manages
